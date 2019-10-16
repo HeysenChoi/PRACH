@@ -31,7 +31,7 @@ Tsampling = 1 / (15000 * 128);  %% Sampling period = 1/samplingrate
 scaling = Tsampling / Ts;
 fsubPRACH = prachInfo.SubcarrierSpacing;
 K = prachInfo.K;
-k0 = chs.FreqOffset * ue.NULRB - ue.NULRB * 12/ 2;
+k0 = chs.FreqOffset * 12 - ue.NULRB * 12/ 2;
 beta = 7.6728e-05;             %% amplitude scaling factor. The value is determined by transmit power.
 s = ones (1/Tsampling/1000,1); 
 for t = 0 : (Nseq+Ncp)/scaling - 1
