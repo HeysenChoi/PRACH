@@ -33,7 +33,7 @@ fsubPRACH = prachInfo.SubcarrierSpacing;
 K = prachInfo.K;
 k0 = chs.FreqOffset * 12 - ue.NULRB * 12/ 2;
 beta = 7.6728e-05;             %% amplitude scaling factor. The value is determined by transmit power.
-s = ones (1/Tsampling/1000,1); 
+s = zeros (1/Tsampling/1000,1); 
 for t = 0 : (Nseq+Ncp)/scaling - 1
     for k = 0 : Nzc - 1
         for n = 0 : Nzc -1
@@ -41,8 +41,5 @@ for t = 0 : (Nseq+Ncp)/scaling - 1
         end       
     end
     s(t+1) = beta * s(t+1);
+    loading = t/((Nseq+Ncp)/scaling)*100
 end
-
-
-
-
