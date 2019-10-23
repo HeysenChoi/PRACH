@@ -7,29 +7,27 @@ ue.CyclicPrefixUL = 'Normal';   % Normal cyclic prefix length
 ue.NTxAnts = 1;                 % Number of transmission antennas
 
 prach.Format = 0;          % PRACH format: TS36.104, Table 8.4.2.1-1
-prach.SeqIdx = 2;         % Logical sequence index: TS36.141, Table A.6-1
+prach.SeqIdx = 22;         % Logical sequence index: TS36.141, Table A.6-1
 prach.CyclicShiftIdx = 1;  % Cyclic shift index: TS36.141, Table A.6-1
 prach.HighSpeed = 0;       % Normal mode: TS36.104, Table 8.4.2.1-1
 prach.FreqOffset = 0;      % Default frequency location
-prach.PreambleIdx = 20;    % Preamble index: TS36.141, Table A.6-1
+prach.PreambleIdx = 32;    % Preamble index: TS36.141, Table A.6-1
 info = ltePRACHInfo(ue, prach)
-zcz = (info.NCS/info.NZC)*info.SamplingRate/info.SubcarrierSpacing;
-deadzone=info.SamplingRate/(info.NZC*info.SubcarrierSpacing)/zcz;
 %% 
 Fs = (15000)*2048;
 start=(info.Fields(1)+info.Fields(2))/Fs*info.SamplingRate;
 duration=info.Fields(3)/Fs*info.SamplingRate;
 
 prachRef = prach;           % for locally generated preamble
-prachRef.PreambleIdx = 20;        
+prachRef.PreambleIdx = 32;        
 refPRACH=ltePRACH(ue,prach);
 refPRACH=refPRACH(start+(1:duration));
 refPRACHFFT = fft(refPRACH);
-%% Channel
-foffset = 0;
+%%
+foffset = 20;
 chcfg.NRxAnts = 1;                       % Number of receive antenna
 chcfg.DelayProfile = 'ETU';              % Delay profile
-chcfg.DopplerFreq = 500.0;                % Doppler frequency
+chcfg.DopplerFreq = 200.0;                % Doppler frequency
 chcfg.MIMOCorrelation = 'Low';           % MIMO correlation
 chcfg.Seed = 1;                          % Channel seed
 chcfg.NTerms = 16;                       % Oscillators used in fading model
@@ -39,17 +37,20 @@ chcfg.NormalizePathGains = 'On';         % Normalize delay profile power
 chcfg.NormalizeTxAnts = 'On';            % Normalize for transmit antennas
 chcfg.SamplingRate = info.SamplingRate;  % Sampling rate
 chcfg.InitTime = (1-1)/1000;
-%% AWGN
+
 ulinfo = lteSCFDMAInfo(ue);
+
 SNRdB = 0;
 SNR = 10^(SNRdB/20);
 N = 1/(SNR*sqrt(double(ulinfo.Nfft)))/sqrt(2.0);
-%% 
-delay = 20;     % CP samples = info.Fields(2)/16 = 198. max delay should be less than < zcz
+
+delay = 100;
+
 txwave = ltePRACH(ue, prach);
 txwave = [zeros(delay,1);txwave];
 %%
 [rxwave, fadinginfo] = lteFadingChannel(chcfg,[txwave; zeros(25, 1)]);
+fadinginfo
 
 noise = N*complex(randn(size(rxwave)), randn(size(rxwave)));
 rxwave = rxwave + noise;
@@ -71,7 +72,7 @@ time_offset = find(corrIFFT == max(corrIFFT)) - 1
 
 
 [detected, offsets] = ltePRACHDetect(ue, prach, rxwave, (0:63).')
-% [detected1, offsets1] = ltePRACHDetect(ue,prach, txwave, (0:63).')
+[detected1, offsets1] = ltePRACHDetect(ue,prach, txwave, (0:63).')
 %%
 
 txwave_corr = txwave(start+(1:duration),1);
@@ -81,7 +82,7 @@ corr_tx = txwave_corrFFT.*conj(refPRACHFFT);
 corr_txIFFT = abs(ifft(corr_tx)).^2;
 
 plot(corrIFFT); hold on
-% plot(corr_txIFFT);
+plot(corr_txIFFT);
 
 %%
 % conv_time = abs(conv(rx,conj(refPRACH))).^2;
