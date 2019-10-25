@@ -11,12 +11,12 @@ ue.NTxAnts = 1;                 % Number of transmission antennas
 
 prach.Format = 0;          % PRACH format: TS36.104, Table 8.4.2.1-1
 prach.SeqIdx = 0;         % Logical sequence index: TS36.141, Table A.6-1
-prach.CyclicShiftIdx = 1;  % Cyclic shift index: TS36.141, Table A.6-1
+prach.CyclicShiftIdx = 10;  % Cyclic shift index: TS36.141, Table A.6-1
 prach.HighSpeed = 0;       % Normal mode: TS36.104, Table 8.4.2.1-1
 prach.FreqOffset = 0;      % Default frequency location
-prach.PreambleIdx = 20;    % Preamble index: TS36.141, Table A.6-1
+prach.PreambleIdx = 0;    % Preamble index: TS36.141, Table A.6-1
 %%
-info = ltePRACHInfo(ue, prach)
+info = ltePRACHInfo(ue, prach);
 zcz = (info.NCS/info.NZC)*info.SamplingRate/info.SubcarrierSpacing;     % cyclic shift in sample numbers
 deadzone=info.SamplingRate/(info.NZC*info.SubcarrierSpacing)/zcz;
 
@@ -25,8 +25,8 @@ start=(info.Fields(1)+info.Fields(2))/Fs*info.SamplingRate;
 duration=info.Fields(3)/Fs*info.SamplingRate;
 %% Channel
 chcfg.NRxAnts = 1;                       % Number of receive antenna
-chcfg.DelayProfile = 'ETU';              % Delay profile
-chcfg.DopplerFreq = 200.0;                % Doppler frequency
+chcfg.DelayProfile = "ETU";              % Delay profile
+chcfg.DopplerFreq = 300.0;                % Doppler frequency
 chcfg.MIMOCorrelation = 'Low';           % MIMO correlation
 chcfg.Seed = 0;                          % Channel seed
 chcfg.NTerms = 16;                       % Oscillators used in fading model
@@ -35,43 +35,70 @@ chcfg.InitPhase = 'Random';              % Random initial phases
 chcfg.NormalizePathGains = 'On';         % Normalize delay profile power
 chcfg.NormalizeTxAnts = 'On';            % Normalize for transmit antennas
 chcfg.SamplingRate = info.SamplingRate;  % Sampling rate
+
+if string(chcfg.DelayProfile) == string('Custom')
+    chcfg.AveragePathGaindB = [0];
+    chcfg.PathDelays = [0];
+end
+
 chcfg.InitTime = (1-1)/1000;            % in seconds
-%%  Received
-delay = 20;     % CP samples = info.Fields(2)/16 = 198. max delay should be less than < zcz
+%%  Transmitted 
+delay = 10;     % CP samples = info.Fields(2)/16 = 198. max delay should be less than < zcz
 txwave = ltePRACH(ue, prach);
 txwave = [zeros(delay,1);txwave];
-
-%% Local reference preamble
+%% Local reference preamble for the target preamble
 refPRACH=ltePRACH(ue,prach);
-[corr_ifft_tx, offset_tx] = corrIFFT(start, duration, txwave,refPRACH); % Ideal without fading channel
-
-interference = 0;
-for i = 1 : n_sim
-    [rxwave, fadinginfo] = lteFadingChannel(chcfg,[txwave; zeros(25, 1)]);
-    rxwave = rxwave((fadinginfo.ChannelFilterDelay + 1):end, :);
-
-%     %%  correlator
-%     [corr_ifft, offset] = corrIFFT(start,duration,rxwave,refPRACH);
-%     offset
-%     %% in time domain
-%     xcorr_Time = abs(xcorr(txwave(start+(1:duration)),refPRACH(start+(1:duration)))).^2;    % directily correlation in time domation
-%     xcorr_Time = xcorr_Time(duration:end);
-
+[corr_ifft_ideal, offset_tx] = corrIFFT(start, duration, txwave,refPRACH); % Ideal without fading channel
+    
+%%
+SIR = zeros(64,1);
+SIR_ideal = zeros(64,1);
+for infPreambleIdx = 0 : 63
     %% Interference preamble
+    infPreambleIdx
+    delayInf = 10;
     prachInf = prach;
-    prachInf.PreambleIdx = 22;
+    prachInf.PreambleIdx = infPreambleIdx;
     prachInf.SeqIdx = 0;
     [InfPRACH, info_inf] = ltePRACH(ue,prachInf);
-    [corr_ifft_inf, offset_inf] = corrIFFT(start, duration, rxwave,InfPRACH); 
+    txwaveInf = [zeros(delayInf,1);InfPRACH];
+    [corr_ifft_inf_ideal, offset_inf_tx] = corrIFFT(start, duration, txwaveInf,refPRACH); % Ideal without fading channel
 
-    interference = interference + corr_ifft_inf(delay+1);
-    i/n_sim
+    %%
+    SIR_tmp = 0;
+    for i = 1 : n_sim
+        [rxwave, fadinginfo] = lteFadingChannel(chcfg,[txwave; zeros(25, 1)]);
+        rxwave = rxwave((fadinginfo.ChannelFilterDelay + 1):end, :);
+
+        rxwaveInf = lteFadingChannel(chcfg,[txwaveInf; zeros(25, 1)]);
+        rxwaveInf = rxwaveInf((fadinginfo.ChannelFilterDelay + 1):end, :);
+        %%  correlator
+        [corr_ifft, offset]         = corrIFFT(start,duration,rxwave,refPRACH);                 % target
+        [corr_ifft_inf, offset_inf] = corrIFFT(start,duration,rxwaveInf,refPRACH);              % interferer 
+
+    %     %% in time domain
+    %     xcorr_Time = abs(xcorr(txwave(start+(1:duration)),refPRACH(start+(1:duration)))).^2;    % directily correlation in time domation
+    %     xcorr_Time = xcorr_Time(duration:end);
+
+        SIR_tmp = SIR_tmp + corr_ifft_inf(offset)/corr_ifft(offset);
+    %     loading = i/n_sim
+    end
+    SIR(infPreambleIdx+1) = SIR_tmp/n_sim;
+    SIR_ideal(infPreambleIdx+1) = corr_ifft_inf_ideal(offset_tx)/corr_ifft_ideal(offset_tx);
 end
-interf = interference/n_sim
+stem(SIR)
+hold on
+stem(SIR_ideal)
 % %% Plot
 % plot(corr_ifft,'Color','r','LineWidth',1.5)
 % hold on
-% plot(corr_ifft_tx,'Color','k','LineWidth',1.5)
+% plot(corr_ifft_ideal,'Color','k','LineWidth',1.5)
 % plot(corr_ifft_inf,'Color','b','LineWidth',1.5)
 
+% info
+% info_inf
+% chcfg
 
+zcSeq = zadoffChuSeq(info.RootSeq, info.NZC);
+xcorr_zcseq = abs(xcorr(zcSeq)/info.NZC);
+% SIR_ZC = xcorr_zcseq(839 + info.NCS*(0:63));
